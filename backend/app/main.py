@@ -14,7 +14,6 @@ Imports:
 """
 
 import asyncio
-from sys import stdout
 from fastapi import FastAPI
 from fastapi.concurrency import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,21 +23,22 @@ from app.messages.event import UpdateEvent
 
 from .db.conn import create_db
 from .db.settings import ENV
-
-from .router.liveness import router as liveness_router
-from .router.sell import router as sell_router
+from .router.liveness import router as liveRouter
+from .router.sell import router as sellRouter
 
 
 create_db()
 
 
-external_update_listener = AsyncListener("rh_event.sells", UpdateEvent.process_message)
+external_update_listener = AsyncListener(
+    "external.rh_event", UpdateEvent.process_message
+)
 
 
 @asynccontextmanager
-async def listener_span(app: FastAPI, *args, **kwargs):
-    print('Starting task listener before req')
-    stdout.flush()
+async def listener_span(fapi_app: FastAPI, *args, **kwargs):
+    # pylint: disable=unused-argument
+
     loop = asyncio.get_running_loop()
     task = loop.create_task(external_update_listener.listen(loop))
     yield
@@ -47,8 +47,8 @@ async def listener_span(app: FastAPI, *args, **kwargs):
 
 
 app = FastAPI()
-app.include_router(liveness_router)
-app.include_router(sell_router)
+app.include_router(liveRouter)
+app.include_router(sellRouter)
 
 app.router.lifespan_context = listener_span
 
