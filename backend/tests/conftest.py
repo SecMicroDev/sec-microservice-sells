@@ -16,10 +16,16 @@ from app.middlewares.send_message import get_async_message_sender_on_loop
 from app.models.enterprise import Enterprise, EnterpriseRelation
 from app.models.role import DefaultRole, DefaultRoleSchema, Role, RoleRelation
 from app.models.scope import DefaultScope, DefaultScopeSchema, Scope, ScopeRelation
+from app.models.sell import BaseProduct, Client, Sell
 from app.models.user import User, UserRead
+
+
+pytest_plugins = ('pytest_asyncio',)
+
 
 # SQLite database URL for testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+
 
 # Create a SQLAlchemy engine
 engine = create_engine(
@@ -28,11 +34,21 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 
+
 # Create a sessionmaker to manage sessions
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 # Create tables in the database
 SQLModel.metadata.create_all(bind=engine)
+
+
+def check_valid_prods_and_clients(pc_tup: tuple[BaseProduct, Client]):
+    rp, rc = pc_tup
+
+    return not rp is not None and (
+        rc is not None and rp.id is not None and rc.id is not None
+    )
 
 
 @asynccontextmanager
@@ -83,7 +99,6 @@ def get_test_client_authenticated(user: UserRead):
         # pylint: disable=unused-argument
 
         user_dict = user.model_dump()
-        user_dict.pop("hashed_password", "")
         return UserRead(**user_dict)
 
     app.dependency_overrides[get_async_message_sender_on_loop] = (
@@ -176,17 +191,118 @@ def create_default_user(db_session: Session, enterprise_role_scope: dict[str, An
         username="testuser",
         email="test@example.com",
         full_name="Test User",
-        hashed_password="somehashedpassword",
-        role_id=role.id,
         scope_id=scope.id,
+        role_id=role.id,
         enterprise_id=enterprise_role_scope["enterprise"].id,
     )
+
+    clients: list[Client] = []
+    products: list[BaseProduct] = []
+
+    r_sells: list[Sell] = []
+    r_clients: list[Client] = []
+    r_products: list[BaseProduct] = []
+
     db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    assert user is not None and user.enterprise_id is not None
+
+    for c in [
+        Client(
+            id=None,
+            name="Test Client",
+            description="A client for testing purposes",
+            enterprise_code="ENT123",
+            enterprise_id=user.enterprise_id
+        ),
+        Client(
+            id=None,
+            name="Test Client 2",
+            description="A client for testing purposes 2",
+            person_code="PER123",
+            enterprise_id=user.enterprise_id
+        )
+    ]:
+        clients.append(c) 
+
+    for p in [
+        BaseProduct(
+            id=None,
+            name="Test Product",
+            description="A product for testing purposes",
+            enterprise_id=user.enterprise_id,
+            cost=10.0,
+            price=22.0,
+            created_by=user.id,
+            last_updated_by=None,
+            stock=10
+        ),
+        BaseProduct(
+            id=None,
+            name="Test Product 2",
+            description="A product for testing purposes 2",
+            enterprise_id=user.enterprise_id,
+            cost=8.0,
+            price=12.0,
+            created_by=user.id,
+            last_updated_by=None,
+            stock=10
+        ),
+    ]:
+        products.append(p)
+
+
+    for (c, p) in zip(clients, products):
+        db_session.add(c)
+        db_session.add(p)
+
     db_session.commit()
 
     db_session.refresh(user)
 
-    return {"user": user, **enterprise_role_scope}
+    for client in clients:
+        db_session.refresh(client)
+        r_clients.append(client)
+
+    for p in products:
+        db_session.refresh(p)
+        r_products.append(p)
+
+    prods_and_clients = zip(r_products, r_clients)
+
+    # if user.id is not None and len(r_clients) > 0 and len(r_products) > 0 and not any(
+    #     map(check_valid_prods_and_clients, prods_and_clients)
+    # ):
+
+    for rp, rc in (prods_and_clients):
+        assert user.id is not None
+        assert rp.id is not None and rc.id is not None
+
+        print(f'Created sells: Prod {rp.id} - Client {rc.id} - User {user.id}')
+
+        r_sells.append(
+            Sell(
+                id=None,
+                product_id=rp.id,
+                client_id=rc.id,
+                quantity=1,
+                user_id=user.id
+            )
+        )
+
+    user.sells = r_sells
+    db_session.add(user)
+    db_session.commit()
+
+    return {
+        "user": user,
+        "clients": clients,
+        "sells": r_sells,
+        "products": r_products,
+        **enterprise_role_scope
+    }
 
 
 @pytest.fixture(scope="function")
@@ -205,7 +321,6 @@ def test_client_authenticated_default(
     enterprise: Enterprise = create_default_user["user"].enterprise
 
     user_dict = user.model_dump()
-    user_dict.pop("hashed_password", "")
 
     print("###############################################")
     print(str(user_dict))

@@ -1,6 +1,6 @@
 from typing import Any, Literal, Union
 import pytest
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.models.enterprise import Enterprise, EnterpriseRelation
 from app.models.role import Role, RoleRelation
@@ -15,9 +15,8 @@ def populate_data(db_session: Session) -> dict[str, Any]:
     default_roles = ["Admin", "User"]
     default_scopes = ["HumanResource", "Stock", "Sales"]
     default_enterprise = Enterprise(
+        id=None,
         name="Jarucucu",
-        organization_email=None,
-        description=None,
         accountable_email="fulano@test.mail.com",
         activity_type="Fishing",
     )
@@ -27,12 +26,25 @@ def populate_data(db_session: Session) -> dict[str, Any]:
 
     session.refresh(default_enterprise)
 
+    assert default_enterprise.id is not None
+
     for role_name in default_roles:
-        role = Role(name=role_name, enterprise_id=default_enterprise.id, hierarchy=1)
+        role = Role(
+            id=None,
+            name=role_name,
+            enterprise_id=default_enterprise.id,
+            hierarchy=1,
+            description=None,
+        )
         session.add(role)
 
     for scope_name in default_scopes:
-        scope = Scope(name=scope_name, enterprise_id=default_enterprise.id)
+        scope = Scope(
+            id=None,
+            name=scope_name,
+            enterprise_id=default_enterprise.id,
+            description=None,
+        )
         session.add(scope)
 
     session.commit()
@@ -43,7 +55,7 @@ def populate_data(db_session: Session) -> dict[str, Any]:
     roles_scopes_query = (
         select(Scope.id, Role.id)
         .where(Role.enterprise_id == default_enterprise.id)
-        .join(Scope, Role.enterprise_id == Scope.enterprise_id)
+        .join(Scope, col(Role.enterprise_id) == col(Scope.enterprise_id))
     )
     r_s_result = session.exec(
         roles_scopes_query
@@ -61,10 +73,10 @@ def populate_data(db_session: Session) -> dict[str, Any]:
 @pytest.fixture(scope="function")
 def create_default_user(db_session: Session, populate_data: dict[str, Any]):
     user = User(
+        id=None,
         username="testuser",
         email="test@example.com",
         full_name="Test User",
-        hashed_password="somehashedpassword",
         role_id=populate_data["roles_id"][0],
         scope_id=populate_data["scopes_id"][0],
         enterprise_id=populate_data["enterprise"].id,
@@ -79,16 +91,27 @@ def create_default_user(db_session: Session, populate_data: dict[str, Any]):
 
 def test_create_user(
     db_session: Session,
-    populate_data: Union[dict[Literal["enterprise"], Enterprise], dict[str, Any]],
+    populate_data: dict[str, Any],
 ):
+    for k in ["roles_id", "scopes_id"]:
+        assert k in populate_data
+
+    assert "roles_id" in populate_data
+    assert type(populate_data.get("roles_id")) == list
+
+    assert "scopes_id" in populate_data
+    assert type(populate_data["scopes_id"]) == list
+
+    role_id: int = populate_data["roles_id"][0]
+    scope_id: int = populate_data["scopes_id"][0]
     # Test creating a user
     user = User(
+        id=None,
         username="testuser",
         email="test@example.com",
         full_name="Test User",
-        hashed_password="somehashedpassword",
-        role_id=populate_data["roles_id"][0],
-        scope_id=populate_data["scopes_id"][0],
+        role_id=role_id,
+        scope_id=scope_id,
         enterprise_id=populate_data["enterprise"].id,
     )
     db_session.add(user)
@@ -96,14 +119,27 @@ def test_create_user(
 
     db_session.refresh(user)
 
+    enterprise: Enterprise = populate_data["enterprise"]
+    assert enterprise.scopes is not None and (
+        len(enterprise.scopes) > 0
+    )
+
+    scope_from_db = db_session.get(Scope, scope_id)
+    assert scope_from_db is not None
+
     assert user.id is not None
     assert user.scope_id is not None
     assert user.scope_id == populate_data["scopes_id"][0]
     assert user.role_id is not None
     assert user.role_id == populate_data["roles_id"][0]
+    assert user.enterprise is not None
     assert user.enterprise.name == populate_data["enterprise"].name
-    assert user.scope.name == "HumanResource"
+    assert user.scope is not None
+    assert user.scope.name == scope_from_db.name
     assert isinstance(user.id, int)
+
+    db_session.rollback()
+    db_session.close()
 
 
 def test_read_user(create_default_user: dict[str, Any], db_session: Session):
@@ -115,6 +151,7 @@ def test_read_user(create_default_user: dict[str, Any], db_session: Session):
     assert result is not None
     assert result.id is not None
     assert isinstance(result.id, int)
+    assert result.scope is not None
     assert result.scope.name == "HumanResource"
     assert result.username == "testuser"
 
@@ -136,20 +173,29 @@ def test_update_user(create_default_user: dict[str, Any], db_session: Session):
 
 
 def test_delete_user(populate_data: dict[str, Any], db_session: Session):
+    assert "roles_id" in populate_data
+    assert type(populate_data["roles_id"]) == list
+
+    assert "scopes_id" in populate_data
+    assert type(populate_data["scopes_id"]) == list
+
+    role_id: int = populate_data["roles_id"][1]
+    scope_id: int = populate_data["scopes_id"][1]
+
     # Test deleting a user
     user = User(
         username="testuser",
         email="test@example.com",
         full_name="Test User",
-        hashed_password="somehashedpassword",
-        role_id=populate_data["roles_id"][1],
-        scope_id=populate_data["scopes_id"][1],
+        role_id=role_id,
+        scope_id=scope_id,
         enterprise_id=populate_data["enterprise"].id,
     )
     db_session.add(user)
     db_session.commit()
 
     result = db_session.exec(select(User).where(User.id == user.id)).first()
+    assert result is not None
     assert result.id is not None
     assert len(result.username) > 0
 
@@ -166,23 +212,35 @@ def test_query_scope_role_by_id(
     # Test querying a user by role and scope id
     with db_session as session:
 
-        user = create_default_user["user"]
-        roles = create_default_user["roles_id"]
-        scopes = create_default_user["scopes_id"]
+        user: User = create_default_user["user"]
+        roles: list[int]= create_default_user["roles_id"]
+        scopes: list[int] = create_default_user["scopes_id"]
+        enterprise: Enterprise = create_default_user["enterprise"]
 
         user_read_params = User(
+            id=None,
             username="testuser2",
             email="test2@example.com",
             full_name="Test User 2",
-            hashed_password="somehashedpassword2",
-            role_id=roles[1],
-            scope_id=scopes[2],
-            enterprise_id=user.enterprise.id,
+            role_id=roles[0],
+            scope_id=scopes[0],
+            enterprise_id=enterprise.id,
         )
 
         session.add(user_read_params)
         session.commit()
         session.refresh(user_read_params)
+
+        for k in session.exec(select(Role)).all():
+            print(k)
+
+        user_read_params.role = session.get(Role, user_read_params.role_id)
+        user_read_params.scope = session.get(Scope, user_read_params.scope_id)
+        user_read_params.enterprise = session.get(Enterprise, user_read_params.enterprise_id)
+
+        assert user_read_params.role is not None
+        assert user_read_params.scope is not None
+        assert user_read_params.enterprise is not None
 
         user_read = UserRead(
             role=RoleRelation(**user_read_params.role.model_dump()),
@@ -191,14 +249,19 @@ def test_query_scope_role_by_id(
             **user_read_params.model_dump()
         )
 
-        result: tuple[Scope, Role] | None = None
+        result: tuple[Enterprise, Scope, Role] | None = None
 
         assert user is not None
         assert user_read_params is not None
+        assert user.role_id is not None
+        assert user.scope_id is not None
+        assert user_read.query_scope_role_by_id(user.role_id, user.scope_id) is not None
 
         result = session.exec(
             user_read.query_scope_role_by_id(user.role_id, user.scope_id)
         ).first()
+
+        assert result is not None
 
         _, scope, role = result
         assert result is not None
