@@ -17,7 +17,7 @@ class BaseIDModel(SQLModel):
         uuid (Optional[UUID4]): The UUID primary key of the model.
     """
 
-    id: Optional[int] | None = Field(
+    id: int | None = Field(
         # default_factory=uuid_pkg.uuid4,
         primary_key=True,
         index=True,
