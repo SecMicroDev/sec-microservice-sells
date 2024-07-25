@@ -61,11 +61,11 @@ class BaseProduct(ProductBase, table=True):
     __table_args__ = (UniqueConstraint("name", "enterprise_id"),)
 
 
-class BaseSell(SQLModel):
-    product_id: int = Field(primary_key=True, foreign_key="product.id", index=True)
-    client_id: int = Field(primary_key=True, foreign_key="client.id", index=True)
+class BaseSell(BaseIDModel):
+    product_id: int = Field(foreign_key="product.id")
+    client_id: int | None = Field(foreign_key="client.id")
     quantity: int = Field(description="Quantity of the product sold.", ge=0)
-    user_id: int = Field(primary_key=True, foreign_key="user.id")
+    user_id: int = Field(foreign_key="user.id")
     created_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -78,8 +78,11 @@ class Sell(BaseSell, table=True):
     client: Optional["Client"] = Relationship(back_populates="sells")
 
 
-class SellCreate(BaseSell):
-    pass
+class SellCreate(SQLModel):
+    product_id: int
+    client_id: int
+    quantity: int
+    user_id: int
 
 
 class SellCreateMe(SQLModel):
@@ -112,8 +115,12 @@ class ClientCreate(SQLModel):
     person_code: Optional[str] = None
 
 
-class ClientRead(ClientCreate):
-    pass
+class ClientRead(SQLModel):
+    id: int
+    name: str
+    description: str
+    enterprise_code: Optional[str] = None
+    person_code: Optional[str] = None
 
 
 class ClientResponse(SQLModel):
