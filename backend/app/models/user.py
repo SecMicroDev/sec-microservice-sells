@@ -1,23 +1,21 @@
 """  User model package """
 
-from typing import Optional, Tuple
 from datetime import datetime as dt, timezone
+from typing import Optional, Tuple
+
+from app.db.base import BaseIDModel
+from app.models.api_response import APIResponse
+from app.models.enterprise import Enterprise, EnterpriseRelation
+from app.models.role import Role
+from app.models.role import RoleRelation
+from app.models.scope import Scope
+from app.models.scope import ScopeRelation
+from app.models.sell import BaseProduct, Sell
 from pydantic import EmailStr
 from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.orm import RelationshipProperty
-from sqlmodel import Field, Relationship, SQLModel, Column, col, select, and_
+from sqlmodel import Column, Field, Relationship, SQLModel, and_, col, select
 from sqlmodel.sql.expression import Select, SelectOfScalar
-
-from app.models.enterprise import Enterprise, EnterpriseRelation
-from app.db.base import BaseIDModel
-
-from app.models.role import Role
-from app.models.scope import Scope
-from app.models.api_response import APIResponse
-
-from app.models.role import RoleRelation
-from app.models.scope import ScopeRelation
-from app.models.sell import BaseProduct, Sell
 
 
 class BaseUser(SQLModel):
@@ -36,11 +34,17 @@ class BaseUser(SQLModel):
     )
 
     def query_scopes_roles(
-        self, roles_ids: list[int] = [], scopes_ids: list[int] = []
+        self, roles_ids: list[int] | None=None, scopes_ids: list[int] | None=None
     ) -> Select[Tuple[Enterprise, Scope, Role]]:
         query = select(Enterprise, Scope, Role).where(
             Enterprise.id == self.enterprise_id
         )
+
+        if roles_ids is None:
+            roles_ids = []
+
+        if scopes_ids is None:
+            scopes_ids = []
 
         if roles_ids and len(roles_ids) > 0:
             query = query.where(col(Role.id).in_(roles_ids))
@@ -114,16 +118,20 @@ class User(BaseIDModel, BaseUser, table=True):
     enterprise: Optional[Enterprise] = Relationship(back_populates="users")
     enterprise_id: int | None = Field(foreign_key="enterprise.id", nullable=False)
     sells: Optional[list["Sell"]] = Relationship(back_populates="user")
-    products: Optional[list["BaseProduct"]] =  Relationship(sa_relationship=RelationshipProperty(
-        "BaseProduct",
-        back_populates="user_created",
-        foreign_keys="[BaseProduct.created_by]"
-    ))
-    updates: Optional[list["BaseProduct"]] = Relationship(sa_relationship=RelationshipProperty(
-        "BaseProduct",
-        back_populates="user_updated",
-        foreign_keys="[BaseProduct.last_updated_by]",
-    ))
+    products: Optional[list["BaseProduct"]] = Relationship(
+        sa_relationship=RelationshipProperty(
+            "BaseProduct",
+            back_populates="user_created",
+            foreign_keys="[BaseProduct.created_by]",
+        )
+    )
+    updates: Optional[list["BaseProduct"]] = Relationship(
+        sa_relationship=RelationshipProperty(
+            "BaseProduct",
+            back_populates="user_updated",
+            foreign_keys="[BaseProduct.last_updated_by]",
+        )
+    )
 
     def get_all(self) -> SelectOfScalar:
         return select(User).where(User.enterprise_id == self.enterprise_id)

@@ -5,7 +5,21 @@ from app.db.conn import get_db
 from app.middlewares.auth import authenticate_user, authorize_user
 from app.models.role import DefaultRole
 from app.models.scope import DefaultScope
-from app.models.sell import BaseProduct, BaseSell, Client, ClientCreate, ClientRead, ClientResponse, Sell, SellCreate, SellCreateMe, SellDetailResponse, SellsResponse, UserSells, UserSellsListResponse
+from app.models.sell import (
+    BaseProduct,
+    BaseSell,
+    Client,
+    ClientCreate,
+    ClientRead,
+    ClientResponse,
+    Sell,
+    SellCreate,
+    SellCreateMe,
+    SellDetailResponse,
+    SellsResponse,
+    UserSells,
+    UserSellsListResponse,
+)
 from app.models.user import User, UserRead
 
 
@@ -29,18 +43,19 @@ def create_client(
 ) -> ClientResponse:
     authorize_user(
         user=current_user,
-        operation_scopes=[
-            DefaultScope.ALL.value, 
-            DefaultScope.SELLS.value],
+        operation_scopes=[DefaultScope.ALL.value, DefaultScope.SELLS.value],
         operation_hierarchy_order=DefaultRole.get_default_hierarchy(
-            DefaultRole.COLLABORATOR)
+            DefaultRole.COLLABORATOR
+        ),
     )
 
     if current_user.enterprise_id is None:
         raise HTTPException(status_code=400, detail="User has no enterprise")
 
     with db_session:
-        db_client = Client(**client.model_dump(), enterprise_id=current_user.enterprise_id)
+        db_client = Client(
+            **client.model_dump(), enterprise_id=current_user.enterprise_id
+        )
         db_session.add(db_client)
         db_session.commit()
         db_session.refresh(db_client)
@@ -58,8 +73,8 @@ def get_client(
     with db_session:
         db_client = db_session.exec(
             select(Client)
-                .where(col(Client.id) == client_id)
-                .where(col(Client.enterprise_id) == current_user.enterprise_id)
+            .where(col(Client.id) == client_id)
+            .where(col(Client.enterprise_id) == current_user.enterprise_id)
         ).first()
 
         if db_client is None:
@@ -67,17 +82,15 @@ def get_client(
 
         authorize_user(
             user=current_user,
-            operation_scopes=[
-                DefaultScope.ALL.value, 
-                DefaultScope.SELLS.value],
+            operation_scopes=[DefaultScope.ALL.value, DefaultScope.SELLS.value],
             operation_hierarchy_order=DefaultRole.get_default_hierarchy(
                 DefaultRole.COLLABORATOR
             ),
             custom_checks=(
-                current_user.role.hierarchy <= DefaultRole
-                    .get_default_hierarchy(DefaultRole.MANAGER) 
+                current_user.role.hierarchy
+                <= DefaultRole.get_default_hierarchy(DefaultRole.MANAGER)
                 or db_client.created_by == current_user.id
-            )
+            ),
         )
 
         return ClientResponse(data=ClientRead(**db_client.model_dump()))
@@ -90,20 +103,20 @@ def query_clients(
     enterprise_code: str | None = None,
     db_session: Session = Depends(get_db),
     current_user: UserRead = Depends(authenticate_user),
-    ) -> ClientReadList:
+) -> ClientReadList:
 
     authorize_user(
         user=current_user,
-        operation_scopes=[
-            DefaultScope.ALL.value, 
-            DefaultScope.SELLS.value],
+        operation_scopes=[DefaultScope.ALL.value, DefaultScope.SELLS.value],
         operation_hierarchy_order=DefaultRole.get_default_hierarchy(
             DefaultRole.COLLABORATOR
-        )
+        ),
     )
 
     with db_session:
-        query = select(Client).where(col(Client.enterprise_id) == current_user.enterprise_id)
+        query = select(Client).where(
+            col(Client.enterprise_id) == current_user.enterprise_id
+        )
 
         if name is not None:
             query = query.where(col(Client.name) == name)
@@ -117,23 +130,21 @@ def query_clients(
         if db_clients is None:
             raise HTTPException(status_code=404, detail="No clients found")
 
-        resp = ClientReadList(data=[ClientRead(**db_client.model_dump()) for db_client in db_clients])
+        resp = ClientReadList(
+            data=[ClientRead(**db_client.model_dump()) for db_client in db_clients]
+        )
 
         authorize_user(
             user=current_user,
-            operation_scopes=[
-                DefaultScope.ALL.value, 
-                DefaultScope.SELLS.value],
+            operation_scopes=[DefaultScope.ALL.value, DefaultScope.SELLS.value],
             operation_hierarchy_order=DefaultRole.get_default_hierarchy(
                 DefaultRole.COLLABORATOR
             ),
             custom_checks=(
-                current_user.role.hierarchy <= DefaultRole
-                    .get_default_hierarchy(DefaultRole.MANAGER) 
-                or all(
-                    [x.created_by == current_user.id for x in db_clients]
-                )
-            )
+                current_user.role.hierarchy
+                <= DefaultRole.get_default_hierarchy(DefaultRole.MANAGER)
+                or all(x.created_by == current_user.id for x in db_clients)
+            ),
         )
 
         return resp
@@ -144,20 +155,19 @@ def delete_client(
     client_id: int,
     db_session: Session = Depends(get_db),
     current_user: UserRead = Depends(authenticate_user),
-    ) -> DefaultResponse:
+) -> DefaultResponse:
     authorize_user(
         user=current_user,
-        operation_scopes=[
-            DefaultScope.ALL.value, 
-            DefaultScope.SELLS.value],
+        operation_scopes=[DefaultScope.ALL.value, DefaultScope.SELLS.value],
         operation_hierarchy_order=DefaultRole.get_default_hierarchy(
-            DefaultRole.MANAGER)
+            DefaultRole.MANAGER
+        ),
     )
     with db_session:
         db_client = db_session.exec(
             select(Client)
-                .where(col(Client.id) == client_id)
-                .where(col(Client.enterprise_id) == current_user.enterprise_id)
+            .where(col(Client.id) == client_id)
+            .where(col(Client.enterprise_id) == current_user.enterprise_id)
         ).first()
 
         if db_client is None:
@@ -175,32 +185,37 @@ def create_sell(
     db_session: Session = Depends(get_db),
     current_user: UserRead = Depends(authenticate_user),
 ) -> SellDetailResponse:
-    print('Sell detail')
+    print("Sell detail")
 
     authorize_user(
         user=current_user,
         operation_scopes=[DefaultScope.SELLS.value, "All"],
         operation_hierarchy_order=DefaultRole.get_default_hierarchy(
             DefaultRole.MANAGER
-        )
+        ),
     )
 
     with db_session:
         stock_product_user = db_session.exec(
             select(BaseProduct, User)
-                .where(col(BaseProduct.id) == sell.product_id)
-                .join(User, onclause=col(BaseProduct.created_by) == col(User.id))
-                .with_for_update(),
+            .where(col(BaseProduct.id) == sell.product_id)
+            .join(User, onclause=col(BaseProduct.created_by) == col(User.id))
+            .with_for_update(),
         ).first()
 
         if stock_product_user is None:
-            print(f'Stock product not found product_id: {sell.product_id}')
+            print(f"Stock product not found product_id: {sell.product_id}")
             raise HTTPException(status_code=404, detail="Product not found")
 
         stock_product, user = stock_product_user
 
         if user.enterprise_id != current_user.enterprise_id:
-            print('Enterprise id:', user.enterprise_id, 'Current user enterprise id:', current_user.enterprise_id)
+            print(
+                "Enterprise id:",
+                user.enterprise_id,
+                "Current user enterprise id:",
+                current_user.enterprise_id,
+            )
             raise HTTPException(status_code=404, detail="Product not found")
 
         if stock_product.price is None:
@@ -229,14 +244,19 @@ def create_my_sell(
 ) -> SellDetailResponse:
     with db_session:
 
-        print(f'Sell id: {sell.product_id}, Enterprise id: {current_user.enterprise_id}')
+        print(
+            f"Sell id: {sell.product_id}, Enterprise id: {current_user.enterprise_id}"
+        )
         stock_product = db_session.exec(
             select(BaseProduct)
-                .where(col(BaseProduct.id) == sell.product_id)
-                .with_for_update(),
+            .where(col(BaseProduct.id) == sell.product_id)
+            .with_for_update(),
         ).first()
 
-        if stock_product is None or stock_product.enterprise_id != current_user.enterprise_id:
+        if (
+            stock_product is None
+            or stock_product.enterprise_id != current_user.enterprise_id
+        ):
             raise HTTPException(status_code=404, detail="Product not found")
 
         if stock_product.price is None:
@@ -248,10 +268,7 @@ def create_my_sell(
         stock_product.stock -= sell.quantity
         db_session.add(stock_product)
 
-        db_sell = Sell(
-            **sell.model_dump(),
-            user_id=current_user.id
-        )
+        db_sell = Sell(**sell.model_dump(), user_id=current_user.id)
         db_session.add(db_sell)
         db_session.commit()
         db_session.refresh(db_sell)
@@ -270,10 +287,14 @@ def get_my_sells(
         if db_user is None:
             raise HTTPException(status_code=404, detail="User not found")
 
-        print('DB User sells:', db_user.sells)
+        print("DB User sells:", db_user.sells)
 
-        sells = list(map(lambda x: BaseSell(**x.model_dump()), db_user.sells \
-            if db_user.sells is not None else []))
+        sells = list(
+            map(
+                lambda x: BaseSell(**x.model_dump()),
+                db_user.sells if db_user.sells is not None else [],
+            )
+        )
         return SellsResponse(data=sells)
 
 
@@ -289,36 +310,40 @@ def query_sells(
         operation_scopes=["Sells", "All"],
         operation_hierarchy_order=DefaultRole.get_default_hierarchy(
             DefaultRole.MANAGER
-        )
+        ),
     )
 
     with db_session:
-        user_query = select(User).where(col(User.enterprise_id) == current_user.enterprise_id)
+        user_query = select(User).where(
+            col(User.enterprise_id) == current_user.enterprise_id
+        )
         if user_ids is not None:
             ids = map(int, user_ids.split(","))
+
+            #pylint: disable=no-member
             user_query = user_query.where(col(User.id).in_(ids))
 
         resp = db_session.exec(user_query).all()
 
         if resp is None:
-            raise HTTPException(status_code=404, detail='No sells found')
+            raise HTTPException(status_code=404, detail="No sells found")
 
         def sells_from_user(x: User):
             return list(
                 map(
-                    lambda y: BaseSell(**y.model_dump()), 
-                    x.sells if x.sells is not None else []
-                 )
+                    lambda y: BaseSell(**y.model_dump()),
+                    x.sells if x.sells is not None else [],
+                )
             )
 
         user_sells = list(
-            map(lambda x: UserSells(
-                id=x.id, 
-                username=x.username, 
-                sells=sells_from_user(x)
-            ), 
-            resp
-        ))
+            map(
+                lambda x: UserSells(
+                    id=x.id, username=x.username, sells=sells_from_user(x)
+                ),
+                resp,
+            )
+        )
 
         return UserSellsListResponse(data=user_sells)
 
@@ -332,19 +357,17 @@ def read_sell(
     current_user: UserRead = Depends(authenticate_user),
 ) -> SellDetailResponse:
     with db_session:
-        clause= (
-            and_(
-                col(User.id) == current_user.id,
-                col(User.enterprise_id) == current_user.enterprise_id
-            )
+        clause = and_(
+            col(User.id) == current_user.id,
+            col(User.enterprise_id) == current_user.enterprise_id,
         )
 
         sell_ex = db_session.exec(
-            select(Sell, col(User.enterprise_id)) \
-                .where(col(Sell.user_id) == user_id) \
-                .where(col(Sell.client_id) == client_id) \
-                .where(col(Sell.product_id) == product_id)
-                .join(User, onclause=clause)
+            select(Sell, col(User.enterprise_id))
+            .where(col(Sell.user_id) == user_id)
+            .where(col(Sell.client_id) == client_id)
+            .where(col(Sell.product_id) == product_id)
+            .join(User, onclause=clause)
         ).first()
 
         if sell_ex is None:
@@ -359,10 +382,10 @@ def read_sell(
                 DefaultRole.COLLABORATOR
             ),
             custom_checks=(
-                current_user.role.hierarchy <= DefaultRole
-                    .get_default_hierarchy(DefaultRole.MANAGER) 
+                current_user.role.hierarchy
+                <= DefaultRole.get_default_hierarchy(DefaultRole.MANAGER)
                 or sell.user_id == current_user.id
-            )
+            ),
         )
 
         return SellDetailResponse(data=sell)
@@ -381,25 +404,22 @@ def delete_sell(
         operation_scopes=["Sells", "All"],
         operation_hierarchy_order=DefaultRole.get_default_hierarchy(
             DefaultRole.MANAGER
-        )
+        ),
     )
     with db_session:
         sell_product = db_session.exec(
-            select(Sell, BaseProduct).where(
+            select(Sell, BaseProduct)
+            .where(
                 and_(
-                    col(Sell.user_id) == user_id ,
+                    col(Sell.user_id) == user_id,
                     col(Sell.product_id) == product_id,
-                    col(Sell.client_id) == client_id
+                    col(Sell.client_id) == client_id,
                 )
-            ).where(
-                User.enterprise_id == current_user.enterprise_id
-            ).join(
-                BaseProduct, 
-                onclause=col(Sell.product_id) == col(BaseProduct.id)
-            ).join(
-                User,
-                onclause=col(Sell.user_id) == col(User.id)
-            ).with_for_update(),
+            )
+            .where(User.enterprise_id == current_user.enterprise_id)
+            .join(BaseProduct, onclause=col(Sell.product_id) == col(BaseProduct.id))
+            .join(User, onclause=col(Sell.user_id) == col(User.id))
+            .with_for_update(),
         ).first()
 
         if sell_product is None:

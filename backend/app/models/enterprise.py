@@ -1,10 +1,10 @@
-from typing import TYPE_CHECKING, Optional
-from app.models.sell import BaseProduct
-from sqlmodel import Field, Relationship, SQLModel
+from typing import Optional, TYPE_CHECKING
 
 from app.db.base import BaseIDModel
 from app.models.role import RoleRelation
 from app.models.scope import ScopeRelation
+from app.models.sell import BaseProduct
+from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -31,33 +31,32 @@ class Enterprise(BaseIDModel, BaseEnterprise, table=True):
     __tablename__ = "enterprise"
     users: Optional[list["User"]] = Relationship(
         back_populates="enterprise",
-        sa_relationship_kwargs=dict(cascade="all, delete-orphan"),
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     scopes: Optional[list["Scope"]] = Relationship(
         back_populates="enterprise",
-        sa_relationship_kwargs=dict(cascade="all, delete-orphan"),
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     roles: Optional[list["Role"]] = Relationship(
         back_populates="enterprise",
-        sa_relationship_kwargs=dict(cascade="all, delete-orphan"),
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     products: Optional[list["BaseProduct"]] = Relationship(back_populates="enterprise")
-    clients: Optional[list["Client"]] = Relationship(back_populates='enterprise', sa_relationship_kwargs={
-        "cascade": "all, delete-orphan",
-    })
-
+    clients: Optional[list["Client"]] = Relationship(
+        back_populates="enterprise",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+        },
+    )
 
 
 class EnterpriseRelation(BaseIDModel, BaseEnterprise):
     """Represents an enterprise relation."""
 
-    pass
-
 
 class EnterpriseWithHierarchy(EnterpriseRelation):
     roles: list["RoleRelation"]
     scopes: list["ScopeRelation"]
-
 
 
 class EnterpriseResponse(SQLModel):
