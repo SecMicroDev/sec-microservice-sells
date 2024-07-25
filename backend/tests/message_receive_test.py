@@ -2,7 +2,13 @@ from typing import Any, Generator
 from unittest.mock import Mock, patch
 import datetime
 import json
-from app.router.utils import UserCreateEvent, UserDeleteEvent, UserDeleteWithId, UserUpdateEvent, UserUpdateWithId
+from app.router.utils import (
+    UserCreateEvent,
+    UserDeleteEvent,
+    UserDeleteWithId,
+    UserUpdateEvent,
+    UserUpdateWithId,
+)
 import pytest
 from sqlalchemy.engine import Engine, create_engine
 from sqlmodel import SQLModel, Session, StaticPool, select
@@ -21,7 +27,7 @@ def setup_db() -> Engine:
     engine = create_engine(
         SQLALCHEMY_DATABASE_URL,
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool
+        poolclass=StaticPool,
     )
 
     SQLModel.metadata.create_all(bind=engine)
@@ -34,9 +40,7 @@ def gen_db(session: Session) -> Generator:
 
 def setup_db_defaults(local_db_session: Session) -> tuple[User, Enterprise]:
     enterprise = Enterprise(
-        id=None,
-        name="TestEnterprise",
-        accountable_email="testenterprise@test.mail.com"
+        id=None, name="TestEnterprise", accountable_email="testenterprise@test.mail.com"
     )
 
     local_db_session.add(enterprise)
@@ -108,22 +112,28 @@ async def test_create_user_event(mock_get: Mock, setup_db: Engine):
 
         mock_get.return_value = gen_db(local_db_session)
 
-        message_dict: dict[str, Any] = { 
-            **json.loads(UserCreateEvent(
-                event_scope=DefaultScope.SELLS.value,
-                data=UserRead(
-                    id=5,
-                    username="testuser2",
-                    email="testemail2@test.mail.com",
-                    full_name="Test User 2",
-                    role=RoleRelation(id=1, name=DefaultRole.OWNER.value, hierarchy=1),
-                    scope=ScopeRelation(id=1, name=DefaultScope.ALL.value),
-                    enterprise=EnterpriseRelation(
-                        id=1, name="TestEnterprise", accountable_email="testenterprisemail@test.com"
+        message_dict: dict[str, Any] = {
+            **json.loads(
+                UserCreateEvent(
+                    event_scope=DefaultScope.SELLS.value,
+                    data=UserRead(
+                        id=5,
+                        username="testuser2",
+                        email="testemail2@test.mail.com",
+                        full_name="Test User 2",
+                        role=RoleRelation(
+                            id=1, name=DefaultRole.OWNER.value, hierarchy=1
+                        ),
+                        scope=ScopeRelation(id=1, name=DefaultScope.ALL.value),
+                        enterprise=EnterpriseRelation(
+                            id=1,
+                            name="TestEnterprise",
+                            accountable_email="testenterprisemail@test.com",
+                        ),
+                        created_at=datetime.datetime.now(),
                     ),
-                    created_at=datetime.datetime.now(),
-                )
-            ).model_dump_json()),
+                ).model_dump_json()
+            ),
             "start_date": datetime.datetime.now().isoformat(),
             "origin": "rh_service",
         }
@@ -137,7 +147,9 @@ async def test_create_user_event(mock_get: Mock, setup_db: Engine):
         mock_get.assert_called_once()
 
         # Assert
-        user = local_db_session.exec(select(User).where(User.username == "testuser2")).first()
+        user = local_db_session.exec(
+            select(User).where(User.username == "testuser2")
+        ).first()
 
         with local_db_session:
             assert user is not None
@@ -179,35 +191,37 @@ async def test_update_user_event(mock_get: Mock, setup_db: Engine):
     assert saved_user.enterprise.name is not None
 
     # Arrange
-    message_dict: dict[str, Any] = { 
-        **json.loads(UserUpdateEvent(
-            event_scope=DefaultScope.SELLS.value,
-            update_scope=DefaultScope.ALL.value,
-            user=UserRead(
-                **saved_user.model_dump(),
-                role=RoleRelation(
-                    id=saved_user.role.id,
-                    name=saved_user.role.name,
-                    hierarchy=saved_user.role.hierarchy,
+    message_dict: dict[str, Any] = {
+        **json.loads(
+            UserUpdateEvent(
+                event_scope=DefaultScope.SELLS.value,
+                update_scope=DefaultScope.ALL.value,
+                user=UserRead(
+                    **saved_user.model_dump(),
+                    role=RoleRelation(
+                        id=saved_user.role.id,
+                        name=saved_user.role.name,
+                        hierarchy=saved_user.role.hierarchy,
+                    ),
+                    scope=ScopeRelation(
+                        id=saved_user.scope.id,
+                        name=saved_user.scope.name,
+                    ),
+                    enterprise=EnterpriseRelation(
+                        id=saved_user.enterprise_id,
+                        name=saved_user.enterprise.name,
+                        accountable_email=enterprise.accountable_email,
+                    )
                 ),
-                scope=ScopeRelation(
-                    id=saved_user.scope.id,
-                    name=saved_user.scope.name,
+                data=UserUpdateWithId(
+                    id=saved_user.id,
+                    enterprise_id=saved_user.enterprise_id,
+                    username="updateduser",
+                    email="updatedemail@test.mail.com",
+                    scope_id=enterprise.scopes[1].id,
                 ),
-                enterprise=EnterpriseRelation(
-                    id=saved_user.enterprise_id,
-                    name=saved_user.enterprise.name,
-                    accountable_email=enterprise.accountable_email,
-                )
-            ),
-            data=UserUpdateWithId(
-                id=saved_user.id,
-                enterprise_id=saved_user.enterprise_id,
-                username="updateduser",
-                email="updatedemail@test.mail.com",
-                scope_id=enterprise.scopes[1].id,
-            )
-        ).model_dump_json()),
+            ).model_dump_json()
+        ),
         "start_date": datetime.datetime.now().isoformat(),
         "origin": "rh_service",
     }
@@ -245,11 +259,11 @@ async def test_update_user_event(mock_get: Mock, setup_db: Engine):
 
 @pytest.mark.asyncio
 @patch("app.messages.event.get_db")
-async def test_delete_user_event(mock_get: Mock, setup_db: Engine): 
+async def test_delete_user_event(mock_get: Mock, setup_db: Engine):
     connection = setup_db.connect()
     transaction = connection.begin()
     local_db_session = Session(autocommit=False, autoflush=False, bind=setup_db)
-    saved_user, _  = setup_db_defaults(local_db_session)
+    saved_user, _ = setup_db_defaults(local_db_session)
 
     assert saved_user is not None
     assert saved_user.id is not None
@@ -258,14 +272,16 @@ async def test_delete_user_event(mock_get: Mock, setup_db: Engine):
 
     assert saved_user.enterprise_id
 
-    message_dict = { 
-        **json.loads(UserDeleteEvent(
-            event_scope=DefaultScope.SELLS.value,
-            data=UserDeleteWithId(
-                id=saved_user.id,
-                enterprise_id=saved_user.enterprise_id,
-            )
-        ).model_dump_json()),
+    message_dict = {
+        **json.loads(
+            UserDeleteEvent(
+                event_scope=DefaultScope.SELLS.value,
+                data=UserDeleteWithId(
+                    id=saved_user.id,
+                    enterprise_id=saved_user.enterprise_id,
+                ),
+            ).model_dump_json()
+        ),
         "start_date": datetime.datetime.now().isoformat(),
         "origin": "rh_service",
     }
@@ -283,7 +299,7 @@ async def test_delete_user_event(mock_get: Mock, setup_db: Engine):
     new_session = Session(autocommit=False, autoflush=False, bind=setup_db)
 
     with new_session:
-        user = new_session.get(User,saved_user.id)
+        user = new_session.get(User, saved_user.id)
         assert user is None
 
     transaction.rollback()

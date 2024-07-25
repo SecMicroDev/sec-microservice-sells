@@ -20,7 +20,7 @@ from app.models.sell import BaseProduct, Client, Sell
 from app.models.user import User, UserRead
 
 
-pytest_plugins = ('pytest_asyncio',)
+pytest_plugins = ("pytest_asyncio",)
 
 
 # SQLite database URL for testing
@@ -215,17 +215,17 @@ def create_default_user(db_session: Session, enterprise_role_scope: dict[str, An
             name="Test Client",
             description="A client for testing purposes",
             enterprise_code="ENT123",
-            enterprise_id=user.enterprise_id
+            enterprise_id=user.enterprise_id,
         ),
         Client(
             id=None,
             name="Test Client 2",
             description="A client for testing purposes 2",
             person_code="PER123",
-            enterprise_id=user.enterprise_id
-        )
+            enterprise_id=user.enterprise_id,
+        ),
     ]:
-        clients.append(c) 
+        clients.append(c)
 
     for p in [
         BaseProduct(
@@ -237,7 +237,7 @@ def create_default_user(db_session: Session, enterprise_role_scope: dict[str, An
             price=22.0,
             created_by=user.id,
             last_updated_by=None,
-            stock=10
+            stock=10,
         ),
         BaseProduct(
             id=None,
@@ -248,13 +248,12 @@ def create_default_user(db_session: Session, enterprise_role_scope: dict[str, An
             price=12.0,
             created_by=user.id,
             last_updated_by=None,
-            stock=10
+            stock=10,
         ),
     ]:
         products.append(p)
 
-
-    for (c, p) in zip(clients, products):
+    for c, p in zip(clients, products):
         db_session.add(c)
         db_session.add(p)
 
@@ -276,19 +275,15 @@ def create_default_user(db_session: Session, enterprise_role_scope: dict[str, An
     #     map(check_valid_prods_and_clients, prods_and_clients)
     # ):
 
-    for rp, rc in (prods_and_clients):
+    for rp, rc in prods_and_clients:
         assert user.id is not None
         assert rp.id is not None and rc.id is not None
 
-        print(f'Created sells: Prod {rp.id} - Client {rc.id} - User {user.id}')
+        print(f"Created sells: Prod {rp.id} - Client {rc.id} - User {user.id}")
 
         r_sells.append(
             Sell(
-                id=None,
-                product_id=rp.id,
-                client_id=rc.id,
-                quantity=1,
-                user_id=user.id
+                id=None, product_id=rp.id, client_id=rc.id, quantity=1, user_id=user.id
             )
         )
 
@@ -301,7 +296,7 @@ def create_default_user(db_session: Session, enterprise_role_scope: dict[str, An
         "clients": clients,
         "sells": r_sells,
         "products": r_products,
-        **enterprise_role_scope
+        **enterprise_role_scope,
     }
 
 
@@ -332,7 +327,7 @@ def test_client_authenticated_default(
         **user_dict,
         role=RoleRelation(**role.model_dump()),
         scope=ScopeRelation(**scope.model_dump()),
-        enterprise=EnterpriseRelation(**enterprise.model_dump())
+        enterprise=EnterpriseRelation(**enterprise.model_dump()),
     )
 
     def override_get_session():

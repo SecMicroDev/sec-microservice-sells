@@ -120,9 +120,7 @@ def test_create_user(
     db_session.refresh(user)
 
     enterprise: Enterprise = populate_data["enterprise"]
-    assert enterprise.scopes is not None and (
-        len(enterprise.scopes) > 0
-    )
+    assert enterprise.scopes is not None and (len(enterprise.scopes) > 0)
 
     scope_from_db = db_session.get(Scope, scope_id)
     assert scope_from_db is not None
@@ -213,7 +211,7 @@ def test_query_scope_role_by_id(
     with db_session as session:
 
         user: User = create_default_user["user"]
-        roles: list[int]= create_default_user["roles_id"]
+        roles: list[int] = create_default_user["roles_id"]
         scopes: list[int] = create_default_user["scopes_id"]
         enterprise: Enterprise = create_default_user["enterprise"]
 
@@ -236,7 +234,9 @@ def test_query_scope_role_by_id(
 
         user_read_params.role = session.get(Role, user_read_params.role_id)
         user_read_params.scope = session.get(Scope, user_read_params.scope_id)
-        user_read_params.enterprise = session.get(Enterprise, user_read_params.enterprise_id)
+        user_read_params.enterprise = session.get(
+            Enterprise, user_read_params.enterprise_id
+        )
 
         assert user_read_params.role is not None
         assert user_read_params.scope is not None

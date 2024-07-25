@@ -1,7 +1,7 @@
 from typing import Any
 from fastapi import status
 from fastapi.testclient import TestClient
-from sqlmodel import Session, select 
+from sqlmodel import Session, select
 
 from app.models.sell import Client, Sell
 
@@ -50,7 +50,10 @@ def test_get_client(
     assert client_data["id"] == client_id
     assert client_data["name"] == create_default_user["clients"][0].name
     assert client_data["description"] == create_default_user["clients"][0].description
-    assert client_data["enterprise_code"] == create_default_user["clients"][0].enterprise_code
+    assert (
+        client_data["enterprise_code"]
+        == create_default_user["clients"][0].enterprise_code
+    )
     assert client_data["person_code"] == create_default_user["clients"][0].person_code
 
 
@@ -69,9 +72,16 @@ def test_query_clients(
     for i, client_data in enumerate(clients_data):
         assert client_data["id"] == create_default_user["clients"][i].id
         assert client_data["name"] == create_default_user["clients"][i].name
-        assert client_data["description"] == create_default_user["clients"][i].description
-        assert client_data["enterprise_code"] == create_default_user["clients"][i].enterprise_code
-        assert client_data["person_code"] == create_default_user["clients"][i].person_code
+        assert (
+            client_data["description"] == create_default_user["clients"][i].description
+        )
+        assert (
+            client_data["enterprise_code"]
+            == create_default_user["clients"][i].enterprise_code
+        )
+        assert (
+            client_data["person_code"] == create_default_user["clients"][i].person_code
+        )
 
 
 def test_delete_client(
@@ -106,7 +116,7 @@ def test_create_sell(
             "product_id": product_id,
             "client_id": client_id,
             "quantity": 2,
-            "user_id": user_id
+            "user_id": user_id,
         },
     )
     assert response.status_code == status.HTTP_200_OK
@@ -132,15 +142,11 @@ def test_create_my_sell(
     user = create_default_user["user"]
     client_id = create_default_user["clients"][0].id
 
-    print(f'User: {user}')
+    print(f"User: {user}")
 
     response = test_client.post(
         "/sells/me",
-        json={
-            "client_id": client_id,
-            "product_id": product_id,
-            "quantity": 2
-        },
+        json={"client_id": client_id, "product_id": product_id, "quantity": 2},
     )
     assert response.status_code == status.HTTP_200_OK
 
@@ -149,17 +155,18 @@ def test_create_my_sell(
     user_id = sell_data["user_id"]
 
     with db_session:
-        db_sell = list(filter(
-            lambda k: k.quantity == 2, 
-            db_session.exec(
-                select(Sell)
-                    .where(
+        db_sell = list(
+            filter(
+                lambda k: k.quantity == 2,
+                db_session.exec(
+                    select(Sell).where(
                         Sell.product_id == product_id,
                         Sell.user_id == user_id,
-                        Sell.client_id == client_id
+                        Sell.client_id == client_id,
                     )
-            ).all()
-        ))[0]
+                ).all(),
+            )
+        )[0]
 
         assert db_sell is not None
         assert db_sell.product_id == product_id
@@ -243,13 +250,10 @@ def test_delete_sell(
     assert response.status_code == status.HTTP_200_OK
 
     db_sell = db_session.exec(
-        select(Sell).where(
-            Sell.product_id == product_id
-        ).where(
-            Sell.user_id == user_id
-        ).where(
-            Sell.client_id == client_id
-        )
+        select(Sell)
+        .where(Sell.product_id == product_id)
+        .where(Sell.user_id == user_id)
+        .where(Sell.client_id == client_id)
     ).first()
 
     assert db_sell is None
