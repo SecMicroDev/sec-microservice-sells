@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlmodel import Session, col, select
+from sqlmodel import Session, and_, col, select
 from app.db.conn import get_db
 from app.middlewares.auth import authenticate_user, authorize_user
 from app.models.role import DefaultRole
@@ -169,12 +169,14 @@ def delete_client(
         return DefaultResponse()
 
 
-@router.post("/", response_model=SellsResponse)
+@router.post("/", response_model=SellDetailResponse)
 def create_sell(
     sell: SellCreate,
     db_session: Session = Depends(get_db),
     current_user: UserRead = Depends(authenticate_user),
-) -> SellsResponse:
+) -> SellDetailResponse:
+    print('Sell detail')
+
     authorize_user(
         user=current_user,
         operation_scopes=[DefaultScope.SELLS.value, "All"],
@@ -184,14 +186,21 @@ def create_sell(
     )
 
     with db_session:
-        stock_product = db_session.exec(
-            select(BaseProduct)
+        stock_product_user = db_session.exec(
+            select(BaseProduct, User)
                 .where(col(BaseProduct.id) == sell.product_id)
-                .where(col(Client.enterprise_id) == current_user.enterprise_id)
+                .join(User, onclause=col(BaseProduct.created_by) == col(User.id))
                 .with_for_update(),
         ).first()
 
-        if stock_product is None:
+        if stock_product_user is None:
+            print(f'Stock product not found product_id: {sell.product_id}')
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        stock_product, user = stock_product_user
+
+        if user.enterprise_id != current_user.enterprise_id:
+            print('Enterprise id:', user.enterprise_id, 'Current user enterprise id:', current_user.enterprise_id)
             raise HTTPException(status_code=404, detail="Product not found")
 
         if stock_product.price is None:
@@ -209,26 +218,25 @@ def create_sell(
         db_session.commit()
         db_session.refresh(db_sell)
 
-        return SellsResponse(**db_sell.model_dump())
+        return SellDetailResponse(data=BaseSell(**db_sell.model_dump()))
 
 
-
-@router.post("/me", response_model=SellsResponse)
+@router.post("/me", response_model=SellDetailResponse)
 def create_my_sell(
     sell: SellCreateMe,
     db_session: Session = Depends(get_db),
     current_user: UserRead = Depends(authenticate_user),
-) -> SellsResponse:
+) -> SellDetailResponse:
     with db_session:
 
+        print(f'Sell id: {sell.product_id}, Enterprise id: {current_user.enterprise_id}')
         stock_product = db_session.exec(
             select(BaseProduct)
                 .where(col(BaseProduct.id) == sell.product_id)
-                .where(col(Client.enterprise_id) == current_user.enterprise_id)
                 .with_for_update(),
         ).first()
 
-        if stock_product is None:
+        if stock_product is None or stock_product.enterprise_id != current_user.enterprise_id:
             raise HTTPException(status_code=404, detail="Product not found")
 
         if stock_product.price is None:
@@ -248,7 +256,7 @@ def create_my_sell(
         db_session.commit()
         db_session.refresh(db_sell)
 
-        return SellsResponse(**db_sell.model_dump())
+        return SellDetailResponse(data=BaseSell(**db_sell.model_dump()))
 
 
 @router.get("/me", response_model=SellsResponse)
@@ -261,6 +269,8 @@ def get_my_sells(
 
         if db_user is None:
             raise HTTPException(status_code=404, detail="User not found")
+
+        print('DB User sells:', db_user.sells)
 
         sells = list(map(lambda x: BaseSell(**x.model_dump()), db_user.sells \
             if db_user.sells is not None else []))
@@ -313,19 +323,34 @@ def query_sells(
         return UserSellsListResponse(data=user_sells)
 
 
-@router.get("/{sell_id}", response_model=SellDetailResponse)
+@router.get("/{user_id}/{client_id}/{product_id}", response_model=SellDetailResponse)
 def read_sell(
-    sell_id: int,
+    user_id: int,
+    client_id: int,
+    product_id: int,
     db_session: Session = Depends(get_db),
     current_user: UserRead = Depends(authenticate_user),
 ) -> SellDetailResponse:
     with db_session:
-        sell = db_session.exec(select(Sell) \
-            .where(col(Sell.id) == sell_id) \
-            .where(col(User.enterprise_id) == current_user.enterprise_id)).first()
+        clause= (
+            and_(
+                col(User.id) == current_user.id,
+                col(User.enterprise_id) == current_user.enterprise_id
+            )
+        )
 
-        if sell is None:
+        sell_ex = db_session.exec(
+            select(Sell, col(User.enterprise_id)) \
+                .where(col(Sell.user_id) == user_id) \
+                .where(col(Sell.client_id) == client_id) \
+                .where(col(Sell.product_id) == product_id)
+                .join(User, onclause=clause)
+        ).first()
+
+        if sell_ex is None:
             raise HTTPException(status_code=404, detail="Sell not found")
+
+        sell, _ = sell_ex
 
         authorize_user(
             user=current_user,
@@ -343,9 +368,11 @@ def read_sell(
         return SellDetailResponse(data=sell)
 
 
-@router.delete("/{sell_id}", response_model=DefaultResponse)
+@router.delete("/{user_id}/{client_id}/{product_id}", response_model=DefaultResponse)
 def delete_sell(
-    sell_id: int,
+    user_id: int,
+    client_id: int,
+    product_id: int,
     db_session: Session = Depends(get_db),
     current_user: UserRead = Depends(authenticate_user),
 ) -> DefaultResponse:
@@ -359,12 +386,19 @@ def delete_sell(
     with db_session:
         sell_product = db_session.exec(
             select(Sell, BaseProduct).where(
-                Sell.id == sell_id
+                and_(
+                    col(Sell.user_id) == user_id ,
+                    col(Sell.product_id) == product_id,
+                    col(Sell.client_id) == client_id
+                )
             ).where(
-                col(Sell.enterprise_id) == current_user.enterprise_id
+                User.enterprise_id == current_user.enterprise_id
             ).join(
                 BaseProduct, 
                 onclause=col(Sell.product_id) == col(BaseProduct.id)
+            ).join(
+                User,
+                onclause=col(Sell.user_id) == col(User.id)
             ).with_for_update(),
         ).first()
 
@@ -383,5 +417,3 @@ def delete_sell(
         db_session.commit()
 
     return DefaultResponse()
-
-
