@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Callable
 import datetime
 import json
+from math import e
 from sys import stdout
 from typing import Any
 
@@ -69,7 +70,10 @@ class UpdateEvent:
         print(f"Received message: {message}")
         event = cls.create_from_message(message)
         if event is not None:
+            print('Updating table')
             await event.update_table()
+        else:
+            print('Event is Invalid')
 
 
         stdout.flush()
@@ -82,6 +86,7 @@ class UpdateEvent:
         if self.event in (user_events + enterprise_events):
             check_update_scope = ''
             check_update_scope =  self.update_scope if self.update_scope is not None else ''
+            print(f"Checking valid event scope: {any((self.event_scope == DefaultScope.SELLS.value, check_update_scope == DefaultScope.SELLS.value,))}")
             return any((
                 self.event_scope == DefaultScope.SELLS.value,
                 # self.event_scope == DefaultScope.ALL.value,
@@ -98,7 +103,7 @@ class UpdateEvent:
         db: Session | None = None
         err: Exception | None = None
         counter = retries
-        print(f"Start enterprise update: Data -- {self.data}")
+        print(f"Start update: Data -- {self.data}")
         while counter > 0:
             try:
                 db = next(get_db())
@@ -168,96 +173,130 @@ class UpdateEvent:
 
     async def update_user(self):
         def db_access(db: Session):
-            role: Role | None = None
-            scope: Scope | None = None
 
-            print(f"Start User update: Data -- {self.data}")
+            name = ''
+            id = 0
 
-            if self.full_user is not None \
-                and self.data.get("enterprise_id") \
-                and self.data.get("id"):
+            try:
+                role: Role | None = None
+                scope: Scope | None = None
 
-                with db as session:
-                    print("Interacting with the database...")
+                print(f"Start User update: Data -- {self.data}")
 
-                    user_read = UserRead(**self.full_user)
-                    db_user = session.get(User, self.data["id"])
+                if self.full_user is not None \
+                    and self.data.get("enterprise_id") \
+                    and self.data.get("id"):
 
-                    if db_user:
-                        if user_read.scope.name != DefaultScope.ALL.value and \
-                                user_read.scope.name != DefaultScope.SELLS.value:
-                            session.delete(db_user)
-                            session.commit()
-                            return
+                    with db as session:
+                        print("Interacting with the database...")
 
-                        if self.data["role_id"]:
-                            role = session.get(Role, self.data["role_id"])
-                        elif "role_name" in self.data:
-                            role = session.exec(
-                                BaseRole.get_roles_by_names(
-                                    self.data["enterprise_id"], [self.data["role_name"]]
-                                )
-                            ).first()
+                        user_read = UserRead(**self.full_user)
+                        db_user = session.get(User, self.data["id"])
 
-                            if "scope_id" in self.data:
-                                scope = session.get(Scope, self.data["scope_id"])
-                            elif "scope_name" in self.data:
-                                scope = session.exec(
-                                    BaseScope.get_roles_by_names(
-                                        self.data["enterprise_id"], [self.data["scope_name"]]
+                        if db_user is not None:
+                            name = db_user.username
+                            id = db_user.id
+
+                            print(f"Found User {name} - ID {id}")
+
+                            if user_read.scope.name != DefaultScope.ALL.value and \
+                                    user_read.scope.name != DefaultScope.SELLS.value:
+
+                                print(f"Deleting User: {user_read.username} -- ID {user_read.id}")
+                                session.delete(db_user)
+                                session.commit()
+                                return
+
+                            if self.data["role_id"]:
+                                role = session.get(Role, self.data["role_id"])
+                            elif "role_name" in self.data:
+                                role = session.exec(
+                                    BaseRole.get_roles_by_names(
+                                        self.data["enterprise_id"], [self.data["role_name"]]
                                     )
                                 ).first()
 
-                            print("finding user...")
+                                if "scope_id" in self.data:
+                                    scope = session.get(Scope, self.data["scope_id"])
+                                elif "scope_name" in self.data:
+                                    scope = session.exec(
+                                        BaseScope.get_roles_by_names(
+                                            self.data["enterprise_id"], [self.data["scope_name"]]
+                                        )
+                                    ).first()
 
-                        if role:
-                            db_user.role_id = role.id
-                            db_user.role = role
+                                print("finding user...")
 
-                        if scope is not None:
-                            db_user.scope_id = scope.id
-                            db_user.scope = scope
+                            if role is not None:
+                                print("Change role")
+                                db_user.role_id = role.id
+                                db_user.role = role
 
-                        if "username" in self.data:
-                            db_user.username = self.data["username"]
+                            if scope is not None:
+                                print("Change scope")
+                                db_user.scope_id = scope.id
+                                db_user.scope = scope
 
-                        if "email" in self.data:
-                            db_user.email = self.data["email"]
+                            if "username" in self.data:
+                                print("Updating Username")
+                                db_user.username = self.data["username"]
 
-                        if "full_name" in self.data:
-                            db_user.full_name = self.data["full_name"]
+                            if "email" in self.data:
+                                print("Updating email")
+                                db_user.email = self.data["email"]
 
-                        print("Updating user...")
-                        session.add(db_user)
-                        session.commit()
+                            if "full_name" in self.data:
+                                print("Updating full_name")
+                                db_user.full_name = self.data["full_name"]
 
-                    else:
-                        print(f'User with id {self.data["id"]} not found')
-                        if user_read.scope.name == DefaultScope.ALL.value or \
-                                user_read.scope.name == DefaultScope.SELLS.value:
-                            
-                            session.add(User(**user_read.model_dump()))
+                            print("Updating user on DB...")
+
+                            session.add(db_user)
                             session.commit()
+
+                            ################## VERIFYING SAVED USER ############
+                            user_v = session.get(User, self.data["id"])
+                            assert user_v is not None
+                            print(f'User updated: {user_v.model_dump()}')
+
+                        else:
+                            print(f'User with id {self.data["id"]} not found')
+                            if user_read.scope.name == DefaultScope.ALL.value or \
+                                    user_read.scope.name == DefaultScope.SELLS.value:
+                                
+                                session.add(User(**user_read.model_dump()))
+                                session.commit()
+            except Exception as e:
+                print(f'Failed to update user {name} - ID: {id} on DB')
+                print(f"Error: {e}")
+
 
         await self.__db_access_loop(db_access)
 
 
     async def create_user(self):
         def db_access(db: Session):
-            print(f"Start User creation: Data -- {self.data}")
-            read_data = self.data.copy()
-            role = Role(**read_data.pop("role"))
-            scope = Scope(**read_data.pop("scope"))
-            enterprise = Enterprise(**read_data.pop("enterprise"))
+            try:
+                print(f"Start User creation: Data -- {self.data}")
+                read_data = self.data.copy()
+                role = Role(**read_data.pop("role"))
+                scope = Scope(**read_data.pop("scope"))
+                enterprise = Enterprise(**read_data.pop("enterprise"))
+                date_created = read_data.get("created_at", None)
 
-            with db as session:
-                user = User(**read_data)
-                user.role_id = role.id
-                user.scope_id = scope.id
-                user.enterprise_id = enterprise.id
-                print("Creating user...")
-                session.add(user)
-                session.commit()
+                with db as session:
+                    user = User(**read_data)
+                    user.role_id = role.id
+                    user.scope_id = scope.id
+                    user.enterprise_id = enterprise.id
+                    user.created_at = datetime.datetime.fromisoformat(date_created) if date_created is not None else datetime.datetime.now()
+                    session.add(user)
+
+                    session.commit()
+
+            except Exception as e:
+                print('Failed to create user')
+                print(f"Error: {e}")
 
         await self.__db_access_loop(db_access)
 
