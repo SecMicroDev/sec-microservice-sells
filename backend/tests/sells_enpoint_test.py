@@ -1,4 +1,5 @@
 from typing import Any
+
 from fastapi import status
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
@@ -208,7 +209,7 @@ def test_query_sells(
     sells_data = response.json()["data"]
 
     assert sells_data is not None
-    assert type(sells_data) is dict
+    assert isinstance(sells_data, dict)
 
     assert sells_data["product_id"] == create_default_user["sells"][0].product_id
     assert sells_data["quantity"] == create_default_user["sells"][0].quantity

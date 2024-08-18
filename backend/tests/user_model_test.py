@@ -1,4 +1,5 @@
-from typing import Any, Literal, Union
+from typing import Any
+
 import pytest
 from sqlmodel import Session, col, select
 
@@ -97,10 +98,10 @@ def test_create_user(
         assert k in populate_data
 
     assert "roles_id" in populate_data
-    assert type(populate_data.get("roles_id")) == list
+    assert isinstance(populate_data.get("roles_id"), list)
 
     assert "scopes_id" in populate_data
-    assert type(populate_data["scopes_id"]) == list
+    assert isinstance(populate_data["scopes_id"], list)
 
     role_id: int = populate_data["roles_id"][0]
     scope_id: int = populate_data["scopes_id"][0]

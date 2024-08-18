@@ -1,7 +1,17 @@
-from typing import Any, Generator
-from unittest.mock import Mock, patch
 import datetime
 import json
+from typing import Any, Generator
+from unittest.mock import Mock, patch
+
+import pytest
+from sqlalchemy.engine import Engine, create_engine
+from sqlmodel import SQLModel, Session, StaticPool, select
+
+from app.messages.event import UpdateEvent
+from app.models.enterprise import Enterprise, EnterpriseRelation
+from app.models.role import DefaultRole, Role, RoleRelation
+from app.models.scope import DefaultScope, Scope, ScopeRelation
+from app.models.user import User, UserRead
 from app.router.utils import (
     UserCreateEvent,
     UserDeleteEvent,
@@ -9,15 +19,6 @@ from app.router.utils import (
     UserUpdateEvent,
     UserUpdateWithId,
 )
-import pytest
-from sqlalchemy.engine import Engine, create_engine
-from sqlmodel import SQLModel, Session, StaticPool, select
-
-from app.models.user import User, UserRead
-from app.models.enterprise import Enterprise, EnterpriseRelation
-from app.models.role import DefaultRole, Role, RoleRelation
-from app.models.scope import DefaultScope, Scope, ScopeRelation
-from app.messages.event import UpdateEvent
 
 
 @pytest.fixture(scope="function")
