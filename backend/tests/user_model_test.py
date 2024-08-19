@@ -173,16 +173,17 @@ def test_update_user(create_default_user: dict[str, Any], db_session: Session):
 
 def test_delete_user(populate_data: dict[str, Any], db_session: Session):
     assert "roles_id" in populate_data
-    assert type(populate_data["roles_id"]) == list
+    assert isinstance(populate_data["roles_id"], list)
 
     assert "scopes_id" in populate_data
-    assert type(populate_data["scopes_id"]) == list
+    assert isinstance(populate_data["scopes_id"], list)
 
     role_id: int = populate_data["roles_id"][1]
     scope_id: int = populate_data["scopes_id"][1]
 
     # Test deleting a user
     user = User(
+        id=None,
         username="testuser",
         email="test@example.com",
         full_name="Test User",
